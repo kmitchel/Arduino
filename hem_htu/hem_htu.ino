@@ -146,6 +146,7 @@ void setup() {
   Wire.begin();
   htu.begin();
 }
+float rh, temp, comprh, dew, avgT, avgRh;
 
 void loop() {
 
@@ -160,7 +161,7 @@ void loop() {
   if (millis() - lastTemp > 15000) {
     lastTemp = millis();
 
-    float rh, temp, comprh, dew;
+    
     //Blocks for 110ms.
     rh = htu.readHumidity();
     temp = htu.readTemperature();
@@ -176,15 +177,27 @@ void loop() {
       // k = log(comprh/100) + (17.62 * temp) / (243.12 + temp);
       // dew =  243.12 * k / (17.62 - k);
 
-      dew = dewPointFast(temp, comprh);
+      //dew = dewPointFast(temp, comprh);
+
+if (avgT == 0) {avgT = temp;}
+if (avgRh == 0) {avgRh = comprh;}
+
+avgT -= avgT/20.0;
+avgT += temp/20.0;
+
+avgRh -= avgRh/20.0;
+avgRh += comprh/20.0;
+
+dew = dewPointFast(avgT, avgRh);
+
 
       //Convert to F
       float dewF = dew * 9 / 5.0 + 32;
-      float tempF = temp * 9 / 5.0 + 32;
+      float tempF = avgT * 9 / 5.0 + 32;
 
       mqtt.publish("temp/tempF", String(tempF).c_str());
       mqtt.publish("temp/dewF", String(dewF).c_str());
-      mqtt.publish("temp/rh", String(comprh).c_str());
+      mqtt.publish("temp/rh", String(avgRh).c_str());
 
     }
 
