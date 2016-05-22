@@ -6,6 +6,14 @@
 
 #include <PubSubClient.h>
 
+// One Wire init straight from examples.
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#define ONE_WIRE_BUS 14
+#define TEMPERATURE_PRECISION 12 //Fast conversion.
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
 WiFiClient espClient;
 
 PubSubClient mqtt(espClient);
@@ -22,6 +30,11 @@ const int timeZone = 0;
 const char* server = "raspberrypi";
 const char* ssid     = "Mitchell";
 const char* password = "easypassword";
+
+//Time variables
+unsigned long lastTemp;
+
+boolean conversionInProgress = false;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
@@ -109,12 +122,18 @@ void gpmPulsed() {
 
 void setup() {
   Serial.begin(9600);
+  
   pinMode(2, OUTPUT);
   digitalWrite(2, 0);
 
   //Enable external interrupt of digital I/O pin 11
   pinMode(GPM_SENSOR, INPUT_PULLUP);
   attachInterrupt(GPM_SENSOR, gpmPulsed, FALLING);
+
+  sensors.setWaitForConversion(false);
+
+  //Set resolution.
+  sensors.setResolution(TEMPERATURE_PRECISION);
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
@@ -163,6 +182,46 @@ void loop() {
     gpmOldTime = gpmNewTime;
     //Don't loose track of any new pulses that may have occured in background.
     gpmPulse = gpmPulse - 50;
+  }
+
+    if (millis() - lastTemp > 15000) {
+    //Send temp date every 30 seconds.
+    lastTemp = millis();
+
+    //Rescan the 1Wire bus, hot swap devices without power cycling.
+    sensors.begin();
+
+    //Non blocking temp conversion.
+    conversionInProgress = true;
+    sensors.requestTemperatures();
+  }
+  
+  //Temp conversion in progress, ask if its ready.
+  if (conversionInProgress) {
+    //    if (sensors.isConversionAvailable(0)) {
+    if (millis() > lastTemp + 2000) {
+      //Send address and value for all devices.
+      int sensorCount = sensors.getDeviceCount();
+
+      for (int val = 0; val < sensorCount; val++) {
+        uint8_t addr[8];
+        sensors.getAddress(addr, val);
+        String address = "temp/";
+        for (uint8_t i = 0; i < 8; i++)
+        {
+          // zero pad the address if necessary
+          if (addr[i] < 16) address = address + String(0);
+          address = address + String(addr[i], HEX);
+        }
+
+        float temp = sensors.getTempFByIndex(val);
+
+        if (temp > -196.6 && temp < 185) {
+          mqtt.publish(address.c_str(), String(temp).c_str());
+        }
+      }
+      conversionInProgress = false;
+    }
   }
 
   mqtt.loop();

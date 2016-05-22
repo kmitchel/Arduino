@@ -38,9 +38,9 @@ uint8_t heatOn = 67, heatOff = 69, coolOff = 51, coolOn = 54;
 
 unsigned long stateDelay, machineDelay;
 
-uint8_t tempF = 70;
-uint8_t dewF = 45;
-uint8_t out = 70;
+float tempF = 70;
+float dewF = 45;
+float out = 70;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
@@ -93,19 +93,19 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
   if (strcmp(topic, "temp/tempF") == 0) {
-    int thisNumber = payloads.toInt();
+    int thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      tempF = thisNumber;
+      tempF = .99 * tempF + .01 * thisNumber;
     }
   }
   if (strcmp(topic, "temp/dewF") == 0) {
-    int thisNumber = payloads.toInt();
+    int thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      dewF = thisNumber;
+      dewF = .99 * dewF + .01 * thisNumber;
     }
   }
   if (strcmp(topic, "temp/289c653f03000027") == 0) {
-    int thisNumber = payloads.toInt();
+    int thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
       out = thisNumber;
     }
@@ -212,7 +212,7 @@ void loop() {
     machineDelay = millis() + 15000;
     switch (state) {
       case READY:
-        if (out >= 65) {
+        if (out >= 60) {
           mqtt.publish("hvac/state", "CoolReady");
           if (dewF >= coolOn) {
             state = COOLON;

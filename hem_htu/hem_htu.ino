@@ -146,7 +146,7 @@ void setup() {
   Wire.begin();
   htu.begin();
 }
-float rh, temp, comprh, dew, avgT, avgRh;
+float rh, temp, comprh, dew;
 
 void loop() {
 
@@ -179,25 +179,17 @@ void loop() {
 
       //dew = dewPointFast(temp, comprh);
 
-if (avgT == 0) {avgT = temp;}
-if (avgRh == 0) {avgRh = comprh;}
 
-avgT -= avgT/20.0;
-avgT += temp/20.0;
-
-avgRh -= avgRh/20.0;
-avgRh += comprh/20.0;
-
-dew = dewPointFast(avgT, avgRh);
+dew = dewPointFast(temp, comprh);
 
 
       //Convert to F
       float dewF = dew * 9 / 5.0 + 32;
-      float tempF = avgT * 9 / 5.0 + 32;
+      float tempF = temp * 9 / 5.0 + 32;
 
       mqtt.publish("temp/tempF", String(tempF).c_str());
       mqtt.publish("temp/dewF", String(dewF).c_str());
-      mqtt.publish("temp/rh", String(avgRh).c_str());
+      mqtt.publish("temp/rh", String(comprh).c_str());
 
     }
 

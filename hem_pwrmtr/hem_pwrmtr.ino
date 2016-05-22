@@ -149,7 +149,12 @@ void loop() {
           if (addr[i] < 16) address = address + String(0);
           address = address + String(addr[i], HEX);
         }
-        mqtt.publish(address.c_str(), String(sensors.getTempFByIndex(val)).c_str());
+
+        float temp = sensors.getTempFByIndex(val);
+
+        if (temp > -196.6 && temp < 185) {
+          mqtt.publish(address.c_str(), String(temp).c_str());
+        }
       }
       conversionInProgress = false;
     }
