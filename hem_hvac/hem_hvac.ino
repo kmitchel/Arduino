@@ -34,13 +34,13 @@ const uint8_t heatOver = 4;
 
 const uint8_t READY = 1, COOLON = 2, HEATON = 3, COOLING = 4, HEATING = 5, FANWAIT = 6, WAIT = 7, OFF = 8;
 uint8_t state = READY;
-uint8_t heatSet = 68, coolSet = 52;
+uint8_t heatSet = 68, coolSet = 71;
 
 unsigned long stateDelay, machineDelay;
 
-float tempF = 68;
-float dewF = 52;
-float out = 70;
+float tempF = 68.0;
+float di = 71.0;
+float out = 70.0;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
@@ -53,7 +53,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       mqtt.publish("hvac/coolSet", String(coolSet).c_str());
     } else {
       int thisNumber = payloads.toInt();
-      constrain(thisNumber, 40, 60);
+      constrain(thisNumber, 60, 80);
       coolSet = thisNumber;
     }
   }
@@ -67,19 +67,23 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
   if (strcmp(topic, "temp/tempF") == 0) {
-    int thisNumber = payloads.toFloat();
+    float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      tempF = .99 * tempF + .01 * thisNumber;
+      tempF = .95 * tempF + .05 * thisNumber;
     }
+    mqtt.publish("test/tempF", String(tempF).c_str());
+
   }
-  if (strcmp(topic, "temp/dewF") == 0) {
-    int thisNumber = payloads.toFloat();
+  if (strcmp(topic, "temp/di") == 0) {
+    float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      dewF = .99 * dewF + .01 * thisNumber;
+      di = .98 * di + .02 * thisNumber;
     }
+    mqtt.publish("test/di", String(di).c_str());
+
   }
   if (strcmp(topic, "temp/289c653f03000027") == 0) {
-    int thisNumber = payloads.toFloat();
+    float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
       out = thisNumber;
     }
@@ -102,7 +106,7 @@ void mqttConnect() {
   if (mqtt.connect(WiFi.hostname().c_str())) {
     mqtt.subscribe("hvac/+");
     mqtt.subscribe("temp/tempF");
-    mqtt.subscribe("temp/dewF");
+    mqtt.subscribe("temp/di");
     mqtt.subscribe("temp/289c653f03000027");
   }
 }
@@ -186,9 +190,9 @@ void loop() {
     machineDelay = millis() + 15000;
     switch (state) {
       case READY:
-        if (out >= 60) {
+        if (out >= 50) {
           mqtt.publish("hvac/state", "CoolReady");
-          if (dewF > coolSet) {
+          if (di > coolSet + 0.1) {
             state = COOLON;
           }
         } else {
@@ -202,7 +206,7 @@ void loop() {
         gpioWrite(cool, LOW);
         gpioWrite(fan, LOW);
         mqtt.publish("hvac/state", "CoolOn");
-        stateDelay = millis() + 600000;
+        stateDelay = millis() + 450000;
         state = COOLING;
         gpioWrite(coolOver, LOW);
         gpioWrite(fanOver, LOW);
@@ -219,7 +223,7 @@ void loop() {
         break;
       case COOLING:
         mqtt.publish("hvac/state", "Cooling");
-        if (dewF < coolSet && millis() > stateDelay) {
+        if (di < coolSet - 0.1 && millis() > stateDelay) {
           stateDelay = millis() + 180000;
           state = FANWAIT;
           gpioWrite(cool, HIGH);

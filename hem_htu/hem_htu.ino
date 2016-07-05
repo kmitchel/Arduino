@@ -187,9 +187,12 @@ dew = dewPointFast(temp, comprh);
       float dewF = dew * 9 / 5.0 + 32;
       float tempF = temp * 9 / 5.0 + 32;
 
+float di = 0.55 * tempF + 0.2 * dewF + 17.5;      
+
       mqtt.publish("temp/tempF", String(tempF).c_str());
       mqtt.publish("temp/dewF", String(dewF).c_str());
       mqtt.publish("temp/rh", String(comprh).c_str());
+      mqtt.publish("temp/di", String(di).c_str());
 
     }
 
