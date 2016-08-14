@@ -34,7 +34,7 @@ const uint8_t heatOver = 4;
 
 const uint8_t READY = 1, COOLON = 2, HEATON = 3, COOLING = 4, HEATING = 5, FANWAIT = 6, WAIT = 7, OFF = 8;
 uint8_t state = READY;
-uint8_t heatSet = 68, coolSet = 71;
+uint8_t heatSet = 68, coolSet = 72;
 
 unsigned long stateDelay, machineDelay;
 
@@ -240,7 +240,7 @@ void loop() {
       case FANWAIT:
         mqtt.publish("hvac/state", "FanWait");
         if (millis() > stateDelay) {
-          stateDelay = millis() + 180000;
+          stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(fan, HIGH);
         }

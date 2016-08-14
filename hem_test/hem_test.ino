@@ -33,6 +33,10 @@ const char* password = "easypassword";
 
 int power, temp, icon;
 
+
+const uint8_t READY = 1, NEXTBTN=2;
+uint8_t state = READY;
+
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
   for (int i = 0; i < length; i++) {
@@ -208,6 +212,8 @@ static char waiting[] = {
 };
 
 void draw() {
+if (state == READY)
+{  
   display.clear();
 
   char buffer[8];
@@ -238,6 +244,8 @@ void draw() {
   //drawXbm(int x, int y, int width, int height, const char *xbm);
 
   display.display();
+
+}
 }
 
 void wifiConnect() {
@@ -317,6 +325,9 @@ void setup() {
   pinMode(2, OUTPUT);
   digitalWrite(2, 0);
 
+  pinMode(12, INPUT_PULLUP);
+  pinMode(13, INPUT_PULLUP);
+
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
   });
@@ -349,6 +360,10 @@ void setup() {
   display.setFont(ArialMT_Plain_16);
 }
 
+
+
+
+
 void loop() {
 
   if (WiFi.status() != WL_CONNECTED) {
@@ -361,4 +376,49 @@ void loop() {
 
   mqtt.loop();
   ArduinoOTA.handle();
+
+static bool btnUp = false, btnDwn = false;
+static unsigned long lastBtnUp = 0, lastBtnDwn = 0;
+
+
+if (digitalRead(12) == 0 && digitalRead(13) == 0 && millis() > lastBtnDwn && millis() > lastBtnUp) {
+  lastBtnDwn = millis() + 500;
+  btnDwn = true;
+  lastBtnUp = millis() + 500;
+  btnUp = true;
+  }
+
+if (digitalRead(12) == 0 && digitalRead(13) == 1 && millis() > lastBtnUp) {
+  lastBtnUp = millis() + 500;
+  btnUp = true;
+  }
+if (digitalRead(13) == 0 && digitalRead(12) == 1  && millis() > lastBtnDwn) {
+  lastBtnDwn = millis() + 500;
+  btnDwn = true;
+  }
+
+
+
+switch (state) {
+  case READY:
+    if (btnUp && !btnDwn) {
+      display.clear();
+      display.display();
+      state = NEXTBTN;
+      }
+        btnUp = false;
+        btnDwn = false;
+ 
+    break;
+  case NEXTBTN:
+    if (btnUp && btnDwn){
+        state = READY;
+      } 
+        btnUp = false;
+        btnDwn = false;
+
+   break;
+
+  }
+
 }
