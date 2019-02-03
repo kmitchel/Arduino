@@ -77,7 +77,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, "temp/di") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      di = .98 * di + .02 * thisNumber;
+      di = .97 * di + .03 * thisNumber;
     }
     mqtt.publish("test/di", String(di).c_str());
 
