@@ -29,7 +29,7 @@ boolean conversionInProgress = false;
 
 #define W_SENSOR 12
 
-void wPulsed() {
+ICACHE_RAM_ATTR void wPulsed() {
   wNewTime = millis();
   wPulse = true;
 }
@@ -70,8 +70,7 @@ void setup() {
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
   });
-  ArduinoOTA.onEnd([]() {
-    
+  ArduinoOTA.onEnd([]() {    
     Serial.println("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -108,7 +107,8 @@ void loop() {
       //Ignore the first pulse. Need 2 good pulses to calc.
       if (!firstRun) {
         //Compute watts. No floating point necessary. 2Wh per pulse.
-        unsigned int currentW = 7200000.0 / (wNewTime - wOldTime);
+//        unsigned int currentW = 7200000.0 / (wNewTime - wOldTime);
+        unsigned int currentW = 3600000.0 / (wNewTime - wOldTime);
         mqtt.publish("power/W", String(currentW).c_str());
       } else {
         firstRun = false;
@@ -134,7 +134,7 @@ void loop() {
   
   //Temp conversion in progress, ask if its ready.
   if (conversionInProgress) {
-    //    if (sensors.isConversionAvailable(0)) {
+        //if (sensors.isConversionComplete()) {
     if (millis() > lastTemp + 2000) {
       //Send address and value for all devices.
       int sensorCount = sensors.getDeviceCount();
@@ -147,8 +147,8 @@ void loop() {
         {
           // zero pad the address if necessary
           if (addr[i] < 16) address = address + String(0);
-          address = address + String(addr[i], HEX);
-        }
+            address = address + String(addr[i], HEX);
+         }
 
         float temp = sensors.getTempFByIndex(val);
 
@@ -163,3 +163,4 @@ void loop() {
   mqtt.loop();
   ArduinoOTA.handle();
 }
+

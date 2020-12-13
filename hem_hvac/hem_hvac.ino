@@ -11,14 +11,6 @@ WiFiClient espClient;
 
 PubSubClient mqtt(espClient);
 
-#include <TimeLib.h>
-#include <TimeAlarms.h>
-
-WiFiUDP Udp;
-
-unsigned int localPort = 8888;  // local port to listen for UDP packets
-const int timeZone = 0;
-
 const char* server = "raspberrypi";
 const char* ssid     = "Mitchell";
 const char* password = "easypassword";
@@ -33,14 +25,14 @@ const uint8_t fanOver = 3;
 const uint8_t heatOver = 4;
 
 const uint8_t READY = 1, COOLON = 2, HEATON = 3, COOLING = 4, HEATING = 5, FANWAIT = 6, WAIT = 7, OFF = 8;
-uint8_t state = READY;
-uint8_t heatSet = 68, coolSet = 72;
+const uint8_t COOL = 1, HEAT = 2;
+uint8_t state = READY, hvacMode = 2;
+uint8_t heatSet = 68, coolSet = 70;
 
-unsigned long stateDelay, machineDelay;
+unsigned long stateDelay, machineDelay, coolRunningLong, coolRunningShort;
 
-float tempF = 68.0;
-float di = 71.0;
-float out = 70.0;
+float tempF = 72.0;
+float di = 70.0;
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
@@ -48,6 +40,17 @@ void callback(char* topic, byte* payload, unsigned int length) {
     payloads += (char)payload[i];
   }
 
+  if (strcmp(topic, "hvac/mode") == 0) {
+    if (payloads == "off"){
+      hvacMode = OFF;
+    }
+    else if (payloads == "cool") {
+      hvacMode = COOL;
+    }
+    else if (payloads == "heat") {
+      hvacMode = HEAT;
+    }
+  }
   if (strcmp(topic, "hvac/coolSet") == 0) {
     if (payloads == "?") {
       mqtt.publish("hvac/coolSet", String(coolSet).c_str());
@@ -77,16 +80,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, "temp/di") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      di = .97 * di + .03 * thisNumber;
+      di = .96 * di + .04 * thisNumber;
     }
     mqtt.publish("test/di", String(di).c_str());
 
-  }
-  if (strcmp(topic, "temp/289c653f03000027") == 0) {
-    float thisNumber = payloads.toFloat();
-    if (thisNumber > 0) {
-      out = thisNumber;
-    }
   }
 }
 
@@ -173,8 +170,6 @@ void setup() {
   ArduinoOTA.setHostname("hvac");
   ArduinoOTA.begin();
 
-  setSyncProvider(getNtpTime);
-  Udp.begin(localPort);
 }
 
 void loop() {
@@ -190,12 +185,18 @@ void loop() {
     machineDelay = millis() + 15000;
     switch (state) {
       case READY:
-        if (out >= 50) {
+        if (hvacMode == OFF) {
+          mqtt.publish("hvac/state", "Off");
+        } else if (hvacMode == COOL) {
           mqtt.publish("hvac/state", "CoolReady");
           if (di > coolSet + 0.1) {
             state = COOLON;
           }
-        } else {
+          if (millis() > coolRunningShort && coolSet > 72) {
+            coolSet = floor(di);
+            coolRunningShort = millis() + 3600000; 
+          }
+        } else if (hvacMode == HEAT) {
           mqtt.publish("hvac/state", "HeatReady");
           if (tempF < heatSet) {
             state = HEATON;
@@ -211,6 +212,7 @@ void loop() {
         gpioWrite(coolOver, LOW);
         gpioWrite(fanOver, LOW);
         gpioWrite(heatOver, LOW);
+        coolRunningLong = millis() + 1800000;
         break;
       case HEATON:
         gpioWrite(heat, LOW);
@@ -227,12 +229,17 @@ void loop() {
           stateDelay = millis() + 180000;
           state = FANWAIT;
           gpioWrite(cool, HIGH);
+          coolRunningShort = millis() + 3600000;
+        }
+        if (millis() > coolRunningLong) {
+          coolSet = ceil(di);
+          coolRunningLong = millis() + 300000;
         }
         break;
       case HEATING:
         mqtt.publish("hvac/state", "Heating");
-        if (tempF > heatSet && millis() > stateDelay) {
-          stateDelay = millis() + 300000;
+        if (tempF > heatSet + 2 && millis() > stateDelay) {
+          stateDelay = millis() + 450000;
           state = WAIT;
           gpioWrite(heat, HIGH);
         }
@@ -254,65 +261,8 @@ void loop() {
           gpioWrite(heatOver, HIGH);
         }
         break;
-      case OFF:
-        mqtt.publish("hvac/state", "Off");
-        break;
     }
   }
   mqtt.loop();
   ArduinoOTA.handle();
-
-}
-
-
-/*-------- NTP code ----------*/
-
-const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  IPAddress ntpServerIP; // NTP server's ip address
-
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  WiFi.hostByName(server, ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12] = 49;
-  packetBuffer[13] = 0x4E;
-  packetBuffer[14] = 49;
-  packetBuffer[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
 }

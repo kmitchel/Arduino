@@ -1,4 +1,5 @@
 
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
@@ -183,11 +184,17 @@ void loop() {
 dew = dewPointFast(temp, comprh);
 
 
+
+//DI=T−0.55×(1−0.01H)×(T−14.5)
+
+float di = temp - 0.55 * (1 - 0.01 * comprh) * (temp - 14.5);
+
+di = di * 9 / 5.0 + 32;
       //Convert to F
       float dewF = dew * 9 / 5.0 + 32;
       float tempF = temp * 9 / 5.0 + 32;
 
-float di = 0.55 * tempF + 0.2 * dewF + 17.5;      
+//float di = 0.55 * tempF + 0.2 * dewF + 17.5;      
 
       mqtt.publish("temp/tempF", String(tempF).c_str());
       mqtt.publish("temp/dewF", String(dewF).c_str());

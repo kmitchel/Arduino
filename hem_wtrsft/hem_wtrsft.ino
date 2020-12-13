@@ -116,7 +116,7 @@ void sendNTPpacket(IPAddress &address)
 unsigned int gpmPulse = 0;
 unsigned long gpmNewTime, gpmOldTime;
 
-void gpmPulsed() {
+ICACHE_RAM_ATTR void gpmPulsed() {
   gpmPulse++;
 }
 
