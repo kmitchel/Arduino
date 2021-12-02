@@ -29,7 +29,7 @@ const uint8_t COOL = 1, HEAT = 2;
 uint8_t state = READY, hvacMode = 2;
 uint8_t heatSet = 68, coolSet = 70;
 
-unsigned long stateDelay, machineDelay, coolRunningLong, coolRunningShort;
+unsigned long stateDelay, machineDelay;
 
 float tempF = 72.0;
 float di = 70.0;
@@ -56,7 +56,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       mqtt.publish("hvac/coolSet", String(coolSet).c_str());
     } else {
       int thisNumber = payloads.toInt();
-      constrain(thisNumber, 60, 80);
+      constrain(thisNumber, 60, 85);
       coolSet = thisNumber;
     }
   }
@@ -72,18 +72,18 @@ void callback(char* topic, byte* payload, unsigned int length) {
   if (strcmp(topic, "temp/tempF") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      tempF = .95 * tempF + .05 * thisNumber;
+//      tempF = .95 * tempF + .05 * thisNumber;
+      tempF = thisNumber;
     }
-    mqtt.publish("test/tempF", String(tempF).c_str());
-
+//    mqtt.publish("test/tempF", String(tempF).c_str());
   }
   if (strcmp(topic, "temp/di") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-      di = .96 * di + .04 * thisNumber;
+//      di = .96 * di + .04 * thisNumber;
+      di = thisNumber;
     }
-    mqtt.publish("test/di", String(di).c_str());
-
+//    mqtt.publish("test/di", String(di).c_str());
   }
 }
 
@@ -189,16 +189,12 @@ void loop() {
           mqtt.publish("hvac/state", "Off");
         } else if (hvacMode == COOL) {
           mqtt.publish("hvac/state", "CoolReady");
-          if (di > coolSet + 0.1) {
+          if (di > coolSet + 1.5) {
             state = COOLON;
-          }
-          if (millis() > coolRunningShort && coolSet > 72) {
-            coolSet = floor(di);
-            coolRunningShort = millis() + 3600000; 
           }
         } else if (hvacMode == HEAT) {
           mqtt.publish("hvac/state", "HeatReady");
-          if (tempF < heatSet) {
+          if (tempF < heatSet - 0.75) {
             state = HEATON;
           }
         }
@@ -212,7 +208,6 @@ void loop() {
         gpioWrite(coolOver, LOW);
         gpioWrite(fanOver, LOW);
         gpioWrite(heatOver, LOW);
-        coolRunningLong = millis() + 1800000;
         break;
       case HEATON:
         gpioWrite(heat, LOW);
@@ -225,21 +220,16 @@ void loop() {
         break;
       case COOLING:
         mqtt.publish("hvac/state", "Cooling");
-        if (di < coolSet - 0.1 && millis() > stateDelay) {
+        if (di < coolSet - 1.5 && millis() > stateDelay) {
           stateDelay = millis() + 180000;
           state = FANWAIT;
           gpioWrite(cool, HIGH);
-          coolRunningShort = millis() + 3600000;
-        }
-        if (millis() > coolRunningLong) {
-          coolSet = ceil(di);
-          coolRunningLong = millis() + 300000;
         }
         break;
       case HEATING:
         mqtt.publish("hvac/state", "Heating");
-        if (tempF > heatSet + 2 && millis() > stateDelay) {
-          stateDelay = millis() + 450000;
+        if (tempF > heatSet + 2.25 && millis() > stateDelay) {
+          stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
         }
