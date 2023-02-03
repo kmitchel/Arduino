@@ -103,8 +103,8 @@ void mqttConnect() {
   if (mqtt.connect(WiFi.hostname().c_str())) {
     mqtt.subscribe("hvac/+");
     mqtt.subscribe("temp/tempF");
-    mqtt.subscribe("temp/di");
-    mqtt.subscribe("temp/289c653f03000027");
+//    mqtt.subscribe("temp/di");
+//    mqtt.subscribe("temp/289c653f03000027");
   }
 }
 
@@ -189,7 +189,7 @@ void loop() {
           mqtt.publish("hvac/state", "Off");
         } else if (hvacMode == COOL) {
           mqtt.publish("hvac/state", "CoolReady");
-          if (di > coolSet + 1.5) {
+          if (tempF > coolSet + 0.5) {
             state = COOLON;
           }
         } else if (hvacMode == HEAT) {
@@ -220,7 +220,7 @@ void loop() {
         break;
       case COOLING:
         mqtt.publish("hvac/state", "Cooling");
-        if (di < coolSet - 1.5 && millis() > stateDelay) {
+        if (tempF < coolSet - 0.5 && millis() > stateDelay || hvacMode != COOL) {
           stateDelay = millis() + 180000;
           state = FANWAIT;
           gpioWrite(cool, HIGH);
@@ -228,7 +228,7 @@ void loop() {
         break;
       case HEATING:
         mqtt.publish("hvac/state", "Heating");
-        if (tempF > heatSet + 2.25 && millis() > stateDelay) {
+        if (tempF > heatSet + 2.25 && millis() > stateDelay || hvacMode != HEAT ) {
           stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
