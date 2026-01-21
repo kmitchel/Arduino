@@ -1,18 +1,32 @@
+/*
+ * hem_hvac.ino - HVAC Relay Control
+ * 
+ * Hardware: ESP8266 with PCF8574 I2C GPIO expander
+ * Purpose: Controls furnace relays (heat, cool, fan) via MQTT commands
+ * 
+ * MQTT Topics:
+ *   Subscribe: hvac/mode, hvac/coolSet, hvac/heatSet, temp/tempF
+ *   Publish: hvac/state, hvac/coolSet, hvac/heatSet
+ * 
+ * Dependencies:
+ *   - ESP8266WiFi
+ *   - PubSubClient (MQTT)
+ *   - Wire (I2C)
+ *   - ArduinoOTA
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
 #include <PubSubClient.h>
-
 #include <Wire.h>
 
 WiFiClient espClient;
-
 PubSubClient mqtt(espClient);
 
 const char* server = "raspberrypi";
-const char* ssid     = "Mitchell";
+const char* ssid = "Mitchell";
 const char* password = "easypassword";
 
 const int addr = 0x39;
@@ -41,16 +55,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 
   if (strcmp(topic, "hvac/mode") == 0) {
-    if (payloads == "off"){
+    if (payloads == "off") {
       hvacMode = OFF;
-    }
-    else if (payloads == "cool") {
+    } else if (payloads == "cool") {
       hvacMode = COOL;
-    }
-    else if (payloads == "heat") {
+    } else if (payloads == "heat") {
       hvacMode = HEAT;
     }
   }
+  
   if (strcmp(topic, "hvac/coolSet") == 0) {
     if (payloads == "?") {
       mqtt.publish("hvac/coolSet", String(coolSet).c_str());
@@ -60,30 +73,29 @@ void callback(char* topic, byte* payload, unsigned int length) {
       coolSet = thisNumber;
     }
   }
+  
   if (strcmp(topic, "hvac/heatSet") == 0) {
     if (payloads == "?") {
       mqtt.publish("hvac/heatSet", String(heatSet).c_str());
     } else {
       int thisNumber = payloads.toInt();
       constrain(thisNumber, 60, 85);
-        heatSet = thisNumber;
+      heatSet = thisNumber;
     }
   }
+  
   if (strcmp(topic, "temp/tempF") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-//      tempF = .95 * tempF + .05 * thisNumber;
       tempF = thisNumber;
     }
-//    mqtt.publish("test/tempF", String(tempF).c_str());
   }
+  
   if (strcmp(topic, "temp/di") == 0) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
-//      di = .96 * di + .04 * thisNumber;
       di = thisNumber;
     }
-//    mqtt.publish("test/di", String(di).c_str());
   }
 }
 
@@ -103,31 +115,28 @@ void mqttConnect() {
   if (mqtt.connect(WiFi.hostname().c_str())) {
     mqtt.subscribe("hvac/+");
     mqtt.subscribe("temp/tempF");
-//    mqtt.subscribe("temp/di");
-//    mqtt.subscribe("temp/289c653f03000027");
   }
 }
 
-void gpioWrite (uint8_t pin, uint8_t value) {
+void gpioWrite(uint8_t pin, uint8_t value) {
   uint8_t data;
   Wire.beginTransmission(addr);
   Wire.requestFrom(addr, 1);
   data = Wire.read();
   Wire.endTransmission();
-  if (value == LOW)
-  {
+  
+  if (value == LOW) {
     data &= ~(1 << pin);
-  }
-  else
-  {
+  } else {
     data |= (1 << pin);
   }
+  
   Wire.beginTransmission(addr);
   Wire.write(data);
   Wire.endTransmission();
 }
 
-uint8_t gpioRead (uint8_t pin) {
+uint8_t gpioRead(uint8_t pin) {
   uint8_t data;
   Wire.beginTransmission(addr);
   Wire.requestFrom(addr, 1);
@@ -141,11 +150,9 @@ void setup() {
   digitalWrite(2, 0);
 
   Wire.begin();
-
   Wire.beginTransmission(addr);
   Wire.write(255);
   Wire.endTransmission();
-
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
@@ -169,7 +176,6 @@ void setup() {
   mqttConnect();
   ArduinoOTA.setHostname("hvac");
   ArduinoOTA.begin();
-
 }
 
 void loop() {
@@ -183,6 +189,7 @@ void loop() {
 
   if (millis() > machineDelay) {
     machineDelay = millis() + 15000;
+    
     switch (state) {
       case READY:
         if (hvacMode == OFF) {
@@ -199,6 +206,7 @@ void loop() {
           }
         }
         break;
+        
       case COOLON:
         gpioWrite(cool, LOW);
         gpioWrite(fan, LOW);
@@ -209,6 +217,7 @@ void loop() {
         gpioWrite(fanOver, LOW);
         gpioWrite(heatOver, LOW);
         break;
+        
       case HEATON:
         gpioWrite(heat, LOW);
         mqtt.publish("hvac/state", "HeatOn");
@@ -218,6 +227,7 @@ void loop() {
         gpioWrite(fanOver, LOW);
         gpioWrite(heatOver, LOW);
         break;
+        
       case COOLING:
         mqtt.publish("hvac/state", "Cooling");
         if (tempF < coolSet - 0.5 && millis() > stateDelay || hvacMode != COOL) {
@@ -226,14 +236,16 @@ void loop() {
           gpioWrite(cool, HIGH);
         }
         break;
+        
       case HEATING:
         mqtt.publish("hvac/state", "Heating");
-        if (tempF > heatSet + 2.25 && millis() > stateDelay || hvacMode != HEAT ) {
+        if (tempF > heatSet + 2.25 && millis() > stateDelay || hvacMode != HEAT) {
           stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
         }
         break;
+        
       case FANWAIT:
         mqtt.publish("hvac/state", "FanWait");
         if (millis() > stateDelay) {
@@ -242,6 +254,7 @@ void loop() {
           gpioWrite(fan, HIGH);
         }
         break;
+        
       case WAIT:
         mqtt.publish("hvac/state", "Wait");
         if (millis() > stateDelay) {
@@ -253,6 +266,7 @@ void loop() {
         break;
     }
   }
+  
   mqtt.loop();
   ArduinoOTA.handle();
 }

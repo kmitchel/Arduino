@@ -1,40 +1,43 @@
+/*
+ * hem_test.ino - OLED Display Monitor
+ * 
+ * Hardware: ESP8266 with SSD1306 OLED display + buttons
+ * Purpose: Displays power consumption, temperature, and HVAC status on OLED screen
+ * 
+ * MQTT Topics:
+ *   Subscribe: power/W, temp/tempF, hvac/state
+ * 
+ * Dependencies:
+ *   - ESP8266WiFi
+ *   - PubSubClient (MQTT)
+ *   - SSD1306 (display driver)
+ *   - ArduinoOTA
+ */
 
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
 #include <PubSubClient.h>
-
-WiFiClient espClient;
-
-PubSubClient mqtt(espClient);
-
-#include <TimeLib.h>
-
-WiFiUDP Udp;
-
 #include <Wire.h>
-
 #include "SSD1306.h"
 
-#define OLED_SDA    4  // pin 14
-#define OLED_SDC    5  // pin 12
-#define OLED_ADDR   0x3C
+#define OLED_SDA 4  // pin 14
+#define OLED_SDC 5  // pin 12
+#define OLED_ADDR 0x3C
 
-SSD1306   display(OLED_ADDR, OLED_SDA, OLED_SDC);    // For I2C
+SSD1306 display(OLED_ADDR, OLED_SDA, OLED_SDC);
 
-unsigned int localPort = 8888;  // local port to listen for UDP packets
-const int timeZone = 0;
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
 
 const char* server = "raspberrypi";
-const char* ssid     = "Mitchell";
+const char* ssid = "Mitchell";
 const char* password = "easypassword";
 
 int power, temp, icon;
 
-
-const uint8_t READY = 1, NEXTBTN=2;
+const uint8_t READY = 1, NEXTBTN = 2;
 uint8_t state = READY;
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -42,6 +45,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (int i = 0; i < length; i++) {
     payloads += (char)payload[i];
   }
+  
   if (strcmp(topic, "power/W") == 0) {
     int thisNumber = payloads.toInt();
     if (thisNumber > 0) {
@@ -49,6 +53,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       draw();
     }
   }
+  
   if (strcmp(topic, "temp/tempF") == 0) {
     int thisNumber = payloads.toInt();
     if (thisNumber > 0) {
@@ -56,23 +61,25 @@ void callback(char* topic, byte* payload, unsigned int length) {
       draw();
     }
   }
+  
   if (strcmp(topic, "hvac/state") == 0) {
     if (strcmp(payloads.c_str(), "CoolReady") == 0 || strcmp(payloads.c_str(), "HeatReady") == 0) {
-      icon = 0;   
+      icon = 0;
     }
     if (strcmp(payloads.c_str(), "CoolOn") == 0 || strcmp(payloads.c_str(), "Cooling") == 0) {
-      icon = 1;   
+      icon = 1;
     }
     if (strcmp(payloads.c_str(), "HeatOn") == 0 || strcmp(payloads.c_str(), "Heating") == 0) {
-      icon = 2;   
+      icon = 2;
     }
     if (strcmp(payloads.c_str(), "FanWait") == 0 || strcmp(payloads.c_str(), "Wait") == 0) {
-      icon = 3;   
+      icon = 3;
     }
     draw();
   }
 }
 
+// Icon bitmaps for HVAC status
 static char cool[] = {
   0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0,
   0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x03, 0x00, 0x00, 0x00,
@@ -212,40 +219,32 @@ static char waiting[] = {
 };
 
 void draw() {
-if (state == READY)
-{  
-  display.clear();
+  if (state == READY) {
+    display.clear();
 
-  char buffer[8];
-  int thisHour = hour(now() - 4 * SECS_PER_HOUR);
-  if (thisHour > 12) thisHour -= 12;
-  sprintf(buffer, "%d:%02d:%02d", thisHour, minute(), second());
-  display.drawString(0, 0, buffer);
+    // Show power consumption
+    display.drawString(0, 0, String(power) + " W");
 
-  display.drawString(0, 19, String(power) + " W");
+    // Show temperature
+    display.drawString(0, 19, String(temp) + " F");
 
-  display.drawString(0, 38, String(temp) + " F");
+    // Show HVAC status icon
+    switch (icon) {
+      case 0:  // Ready - no icon
+        break;
+      case 1:  // Cooling
+        display.drawXbm(63, 0, 64, 64, cool);
+        break;
+      case 2:  // Heating
+        display.drawXbm(63, 0, 64, 64, heat);
+        break;
+      case 3:  // Waiting
+        display.drawXbm(63, 0, 64, 64, waiting);
+        break;
+    }
 
-  switch(icon){
-    case 0:
-      break;
-    case 1:
-      display.drawXbm(63, 0, 64, 64, cool);
-      break;
-    case 2:
-      display.drawXbm(63, 0, 64, 64, heat);
-      break;
-    case 3:
-      display.drawXbm(63, 0, 64, 64, waiting);
-      break;
+    display.display();
   }
-
-
-  //drawXbm(int x, int y, int width, int height, const char *xbm);
-
-  display.display();
-
-}
 }
 
 void wifiConnect() {
@@ -267,58 +266,6 @@ void mqttConnect() {
     mqtt.subscribe("hvac/state");
   }
 }
-
-/*-------- NTP code ----------*/
-
-const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime() {
-  IPAddress ntpServerIP; // NTP server's ip address
-
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  WiFi.hostByName(server, ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12] = 49;
-  packetBuffer[13] = 0x4E;
-  packetBuffer[14] = 49;
-  packetBuffer[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
-}
-
 
 void setup() {
   Serial.begin(9600);
@@ -352,20 +299,11 @@ void setup() {
   ArduinoOTA.setHostname("test");
   ArduinoOTA.begin();
 
-  Udp.begin(localPort);
-  setSyncProvider(getNtpTime);
   display.init();
-  //display.flipScreenVertically();
-  //display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.setFont(ArialMT_Plain_16);
 }
 
-
-
-
-
 void loop() {
-
   if (WiFi.status() != WL_CONNECTED) {
     wifiConnect();
   }
@@ -377,48 +315,44 @@ void loop() {
   mqtt.loop();
   ArduinoOTA.handle();
 
-static bool btnUp = false, btnDwn = false;
-static unsigned long lastBtnUp = 0, lastBtnDwn = 0;
+  static bool btnUp = false, btnDwn = false;
+  static unsigned long lastBtnUp = 0, lastBtnDwn = 0;
 
-
-if (digitalRead(12) == 0 && digitalRead(13) == 0 && millis() > lastBtnDwn && millis() > lastBtnUp) {
-  lastBtnDwn = millis() + 500;
-  btnDwn = true;
-  lastBtnUp = millis() + 500;
-  btnUp = true;
+  // Button handling
+  if (digitalRead(12) == 0 && digitalRead(13) == 0 && millis() > lastBtnDwn && millis() > lastBtnUp) {
+    lastBtnDwn = millis() + 500;
+    btnDwn = true;
+    lastBtnUp = millis() + 500;
+    btnUp = true;
   }
 
-if (digitalRead(12) == 0 && digitalRead(13) == 1 && millis() > lastBtnUp) {
-  lastBtnUp = millis() + 500;
-  btnUp = true;
+  if (digitalRead(12) == 0 && digitalRead(13) == 1 && millis() > lastBtnUp) {
+    lastBtnUp = millis() + 500;
+    btnUp = true;
   }
-if (digitalRead(13) == 0 && digitalRead(12) == 1  && millis() > lastBtnDwn) {
-  lastBtnDwn = millis() + 500;
-  btnDwn = true;
+  
+  if (digitalRead(13) == 0 && digitalRead(12) == 1 && millis() > lastBtnDwn) {
+    lastBtnDwn = millis() + 500;
+    btnDwn = true;
   }
 
-
-
-switch (state) {
-  case READY:
-    if (btnUp && !btnDwn) {
-      display.clear();
-      display.display();
-      state = NEXTBTN;
+  switch (state) {
+    case READY:
+      if (btnUp && !btnDwn) {
+        display.clear();
+        display.display();
+        state = NEXTBTN;
       }
-        btnUp = false;
-        btnDwn = false;
- 
-    break;
-  case NEXTBTN:
-    if (btnUp && btnDwn){
+      btnUp = false;
+      btnDwn = false;
+      break;
+      
+    case NEXTBTN:
+      if (btnUp && btnDwn) {
         state = READY;
-      } 
-        btnUp = false;
-        btnDwn = false;
-
-   break;
-
+      }
+      btnUp = false;
+      btnDwn = false;
+      break;
   }
-
 }

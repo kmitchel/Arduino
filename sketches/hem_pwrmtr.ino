@@ -1,33 +1,47 @@
+/*
+ * hem_pwrmtr.ino - Power Meter Monitor
+ * 
+ * Hardware: ESP8266 with optical power meter sensor + DS18B20 temp sensors
+ * Purpose: Monitors household power consumption and temperature sensors
+ * 
+ * MQTT Topics:
+ *   Publish: power/W, temp/{sensor_address}
+ * 
+ * Dependencies:
+ *   - ESP8266WiFi
+ *   - PubSubClient (MQTT)
+ *   - OneWire
+ *   - DallasTemperature
+ *   - ArduinoOTA
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
-// One Wire init straight from examples.
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <PubSubClient.h>
+
 #define ONE_WIRE_BUS 14
-#define TEMPERATURE_PRECISION 12 //Fast conversion.
+#define TEMPERATURE_PRECISION 12
+#define W_SENSOR 12
+
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
-#include <PubSubClient.h>
 WiFiClient espClient;
-
 PubSubClient mqtt(espClient);
 
 const char* server = "raspberrypi";
-const char* ssid     = "Mitchell";
+const char* ssid = "Mitchell";
 const char* password = "easypassword";
 
-//Time variables
 unsigned long wNewTime, wOldTime, lastTemp, stateDelay;
 
 boolean firstRun = true;
 boolean wPulse = false;
 boolean conversionInProgress = false;
-
-#define W_SENSOR 12
 
 ICACHE_RAM_ATTR void wPulsed() {
   wNewTime = millis();
@@ -47,6 +61,7 @@ void wifiConnect() {
 void mqttConnect() {
   mqtt.setServer(server, 1883);
   if (mqtt.connect(WiFi.hostname().c_str())) {
+    // Connected
   }
 }
 
@@ -58,19 +73,16 @@ void setup() {
   pinMode(2, OUTPUT);
   digitalWrite(2, 0);
 
-  //Enable external interrupt of digital I/O pin 12
   pinMode(W_SENSOR, INPUT);
   attachInterrupt(W_SENSOR, wPulsed, FALLING);
 
   sensors.setWaitForConversion(false);
-
-  //Set resolution.
   sensors.setResolution(TEMPERATURE_PRECISION);
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
   });
-  ArduinoOTA.onEnd([]() {    
+  ArduinoOTA.onEnd([]() {
     Serial.println("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
@@ -85,7 +97,7 @@ void setup() {
     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
     else if (error == OTA_END_ERROR) Serial.println("End Failed");
   });
-  
+
   wifiConnect();
   mqttConnect();
   ArduinoOTA.setHostname("pwrmtr");
@@ -102,53 +114,48 @@ void loop() {
   }
 
   if (wPulse) {
-    // Pulse less than 300 ms is > 24kW. Probably noise, better to just drop the pulse.
+    // Pulse less than 300ms is >24kW - probably noise, drop it
     if (wNewTime - wOldTime > 300) {
-      //Ignore the first pulse. Need 2 good pulses to calc.
+      //Ignore the first pulse - need 2 good pulses to calculate
       if (!firstRun) {
-        //Compute watts. No floating point necessary. 2Wh per pulse.
-//        unsigned int currentW = 7200000.0 / (wNewTime - wOldTime);
+        // Compute watts: 3600000ms/hour * 1Wh per pulse
         unsigned int currentW = 3600000.0 / (wNewTime - wOldTime);
         mqtt.publish("power/W", String(currentW).c_str());
       } else {
         firstRun = false;
       }
       wOldTime = wNewTime;
-      //Toggle builtin LED for use as a heartbeat.
+      // Toggle builtin LED as heartbeat
       digitalWrite(0, !digitalRead(0));
     }
     wPulse = false;
   }
 
   if (millis() - lastTemp > 15000) {
-    //Send temp date every 30 seconds.
     lastTemp = millis();
 
-    //Rescan the 1Wire bus, hot swap devices without power cycling.
+    // Rescan 1-Wire bus for hot-swap support
     sensors.begin();
 
-    //Non blocking temp conversion.
+    // Non-blocking temp conversion
     conversionInProgress = true;
     sensors.requestTemperatures();
   }
-  
-  //Temp conversion in progress, ask if its ready.
+
+  // Check if temp conversion is complete
   if (conversionInProgress) {
-        //if (sensors.isConversionComplete()) {
     if (millis() > lastTemp + 2000) {
-      //Send address and value for all devices.
       int sensorCount = sensors.getDeviceCount();
 
       for (int val = 0; val < sensorCount; val++) {
         uint8_t addr[8];
         sensors.getAddress(addr, val);
+        
         String address = "temp/";
-        for (uint8_t i = 0; i < 8; i++)
-        {
-          // zero pad the address if necessary
-          if (addr[i] < 16) address = address + String(0);
-            address = address + String(addr[i], HEX);
-         }
+        for (uint8_t i = 0; i < 8; i++) {
+          if (addr[i] < 16) address += "0";
+          address += String(addr[i], HEX);
+        }
 
         float temp = sensors.getTempFByIndex(val);
 
@@ -159,8 +166,7 @@ void loop() {
       conversionInProgress = false;
     }
   }
-  
+
   mqtt.loop();
   ArduinoOTA.handle();
 }
-
