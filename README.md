@@ -175,8 +175,13 @@ Staleness check: Warns if API data >2 hours old.
 ## Repository Contents
 
 - `hvac-mpc/` - Node.js MPC controller (**this improved version**)
-- `hem_hvac/` - ESP32 firmware for HVAC relay control
-- `hem_htu/` - Humidity/Temperature sensor firmware
+- `sketches/` - Arduino/ESP32 firmware sketches
+  - `hem_hvac/` - HVAC relay control firmware
+  - `hem_htu/` - Humidity/Temperature sensor firmware
+  - `hem_boiler_plate/` - Boilerplate sketch template
+  - `hem_pwrmtr/` - Power meter firmware
+  - `hem_test/` - Test firmware
+  - `hem_wtrsft/` - Water softener monitoring
 - `libraries/` - Arduino libraries
 
 ## License
