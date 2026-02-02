@@ -34,8 +34,13 @@ float tempF = 72.0;
 float di = 70.0;
 
 // ==========================================
-// OPERATIONAL VARIABLES
+// OPERATIONAL & SAFETY VARIABLES
 // ==========================================
+unsigned long lastTempUpdate = 0;           // Last time we got a temperature
+const unsigned long SENSOR_TIMEOUT = 300000; // 5 mins failsafe
+unsigned long heatStartTime = 0;            // Tracking for max runtime
+const unsigned long MAX_HEAT_TIME = 7200000; // 2 hours safety cutoff
+bool failsafeActive = false;
 
 
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -79,6 +84,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
     float thisNumber = payloads.toFloat();
     if (thisNumber > 0) {
       tempF = thisNumber;
+      lastTempUpdate = millis(); // Refresh watchdog
+      if (failsafeActive) {
+        failsafeActive = false;
+        mqtt.publish("hvac/info", "Failsafe cleared: Sensor data received");
+      }
     }
   }
   if (strcmp(topic, "temp/di") == 0) {
@@ -126,7 +136,13 @@ void gpioWrite (uint8_t pin, uint8_t value) {
   
   Wire.beginTransmission(addr);
   Wire.write(data);
-  Wire.endTransmission();
+  byte error = Wire.endTransmission();
+  
+  if (error != 0) {
+    char errMsg[50];
+    snprintf(errMsg, 50, "I2C Write Error: %d", error);
+    mqtt.publish("hvac/error", errMsg);
+  }
 }
 
 uint8_t gpioRead (uint8_t pin) {
@@ -179,8 +195,16 @@ void loop() {
     wifiConnect();
   }
 
-  if (!mqtt.connected()) {
-    mqttConnect();
+  // ==========================================
+  // SENSOR WATCHDOG - Failsafe logic
+  // ==========================================
+  if (!failsafeActive && (millis() - lastTempUpdate > SENSOR_TIMEOUT) && lastTempUpdate != 0) {
+    failsafeActive = true;
+    state = WAIT;
+    stateDelay = millis() + 300000;
+    gpioWrite(heat, HIGH); 
+    gpioWrite(cool, HIGH);
+    mqtt.publish("hvac/error", "FAILSAFE: Sensor data stale (>5m). Shutting down.");
   }
 
 
@@ -193,8 +217,7 @@ void loop() {
     uint8_t oldState = state;
     
     switch (state) {
-      case READY:
-        if (hvacMode == OFF) {
+        if (hvacMode == OFF || failsafeActive) {
           // Handled in report
         } else if (hvacMode == COOL) {
           if (tempF > coolSet + 0.5) {
@@ -203,6 +226,7 @@ void loop() {
         } else if (hvacMode == HEAT) {
           if (tempF < heatSet - 0.5) {
             state = HEATON;
+            heatStartTime = millis(); // Start safety timer
           }
         }
         break;
@@ -231,10 +255,16 @@ void loop() {
         }
         break;
       case HEATING:
-        if ((tempF > heatSet + 0.5 && millis() > stateDelay) || hvacMode != HEAT ) {
+        if ((tempF > heatSet + 0.5 && millis() > stateDelay) || hvacMode != HEAT || failsafeActive) {
           stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
+        } else if (millis() - heatStartTime > MAX_HEAT_TIME) {
+          // Absolute safety timeout (2 hours)
+          stateDelay = millis() + 300000;
+          state = WAIT;
+          gpioWrite(heat, HIGH);
+          mqtt.publish("hvac/error", "Safety Cutoff: Max runtime reached (2h)");
         }
         break;
       case FANWAIT:
@@ -270,7 +300,7 @@ void loop() {
       case COOLING:  stateStr = "Cooling"; break;
       case HEATING:  stateStr = "Heating"; break;
       case FANWAIT:  stateStr = "FanWait"; break;
-      case WAIT:     stateStr = "Wait"; break;
+      case WAIT:     stateStr = failsafeActive ? "Failsafe" : "Wait"; break;
     }
     mqtt.publish("hvac/state", stateStr.c_str());
     
