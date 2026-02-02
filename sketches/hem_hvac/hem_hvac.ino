@@ -5,6 +5,9 @@
 #include <PubSubClient.h>
 
 #include <Wire.h>
+#include <time.h>
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 
 WiFiClient espClient;
 
@@ -42,6 +45,22 @@ unsigned long heatStartTime = 0;            // Tracking for max runtime
 const unsigned long MAX_HEAT_TIME = 7200000; // 2 hours safety cutoff
 bool failsafeActive = false;
 
+// ==========================================
+// SCHEDULER & PERSISTENCE
+// ==========================================
+struct ScheduleEntry {
+  int hour;
+  int temp;
+};
+ScheduleEntry schedule[3] = {
+  {22, 60}, // 10 PM
+  {0, 58},  // Midnight
+  {6, 63}   // 6 AM
+};
+int currentScheduledSetpoint = -1;
+unsigned long lastScheduleCheck = 0;
+const char* tzConfig = "EST5EDT,M3.2.0,M11.1.0"; // US Eastern Time
+
 
 void callback(char* topic, byte* payload, unsigned int length) {
   String payloads;
@@ -78,6 +97,21 @@ void callback(char* topic, byte* payload, unsigned int length) {
       mqtt.publish("hvac/heatSet", String(heatSet).c_str());
     } else {
       heatSet = constrain(payloads.toInt(), 60, 85);
+      saveConfig();
+    }
+  }
+  if (strcmp(topic, "hvac/schedule") == 0) {
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, payloads);
+    if (!error && doc.is<JsonArray>()) {
+      JsonArray arr = doc.as<JsonArray>();
+      for (int i=0; i<arr.size() && i<3; i++) {
+        schedule[i].hour = arr[i]["h"];
+        schedule[i].temp = arr[i]["t"];
+      }
+      currentScheduledSetpoint = -1; // Force re-evaluation
+      saveConfig();
+      mqtt.publish("hvac/info", "Schedule updated via MQTT");
     }
   }
   if (strcmp(topic, "temp/tempF") == 0) {
@@ -108,7 +142,92 @@ void wifiConnect() {
     digitalWrite(2, !digitalRead(2));
   }
   digitalWrite(2, 1);
+  configTime(0, 0, "192.168.1.1", "pool.ntp.org");
+  setenv("TZ", tzConfig, 1);
+  tzset();
 }
+
+void saveConfig() {
+  StaticJsonDocument<512> doc;
+  doc["heatSet"] = heatSet;
+  doc["coolSet"] = coolSet;
+  JsonArray sched = doc.createNestedArray("schedule");
+  for (int i=0; i<3; i++) {
+    JsonObject entry = sched.createNestedObject();
+    entry["h"] = schedule[i].hour;
+    entry["t"] = schedule[i].temp;
+  }
+  
+  File file = LittleFS.open("/config.json", "w");
+  if (file) {
+    serializeJson(doc, file);
+    file.close();
+  }
+}
+
+void loadConfig() {
+  if (!LittleFS.exists("/config.json")) return;
+  File file = LittleFS.open("/config.json", "r");
+  if (!file) return;
+  
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, file);
+  if (!error) {
+    heatSet = doc["heatSet"] | heatSet;
+    coolSet = doc["coolSet"] | coolSet;
+    if (doc.containsKey("schedule")) {
+      JsonArray sched = doc["schedule"];
+      for (int i=0; i<sched.size() && i<3; i++) {
+        schedule[i].hour = sched[i]["h"];
+        schedule[i].temp = sched[i]["t"];
+      }
+    }
+  }
+  file.close();
+}
+
+void checkSchedule() {
+  time_t now = time(nullptr);
+  struct tm* ptm = localtime(&now);
+  if (ptm->tm_year < 120) return; // Time not set yet
+
+  int currentHour = ptm->tm_hour;
+  int targetTemp = -1;
+  
+  // Find the most recent scheduled setpoint
+  // We check in chronological order and take the latest one that has passed today
+  // or the last one from yesterday if we are before the first one today.
+  
+  int bestMatchIdx = -1;
+  int maxHourFound = -1;
+  
+  for(int i=0; i<3; i++) {
+    if (currentHour >= schedule[i].hour) {
+       if (schedule[i].hour > maxHourFound) {
+         maxHourFound = schedule[i].hour;
+         bestMatchIdx = i;
+       }
+    }
+  }
+  
+  // If no match found today (e.g. before 6am), find the latest hour in the schedule (from yesterday)
+  if (bestMatchIdx == -1) {
+    for(int i=0; i<3; i++) {
+      if (schedule[i].hour > maxHourFound) {
+        maxHourFound = schedule[i].hour;
+        bestMatchIdx = i;
+      }
+    }
+  }
+
+  if (bestMatchIdx != -1 && schedule[bestMatchIdx].temp != currentScheduledSetpoint) {
+    currentScheduledSetpoint = schedule[bestMatchIdx].temp;
+    heatSet = currentScheduledSetpoint;
+    mqtt.publish("hvac/info", ("Schedule: Setpoint updated to " + String(heatSet)).c_str());
+    saveConfig();
+  }
+}
+
 
 void mqttConnect() {
   mqtt.setServer(server, 1883);
@@ -188,6 +307,11 @@ void setup() {
   ArduinoOTA.setHostname("hvac");
   ArduinoOTA.begin();
 
+  if (!LittleFS.begin()) {
+    Serial.println("LittleFS Mount Failed");
+  } else {
+    loadConfig();
+  }
 }
 
 void loop() {
@@ -208,6 +332,14 @@ void loop() {
   }
 
 
+  if (!mqtt.connected()) {
+    mqttConnect();
+  }
+
+  if (millis() - lastScheduleCheck > 60000) {
+    lastScheduleCheck = millis();
+    checkSchedule();
+  }
 
   // Run State Machine Logic frequently (every 500ms)
   static unsigned long lastLogicTick = 0;
@@ -217,6 +349,7 @@ void loop() {
     uint8_t oldState = state;
     
     switch (state) {
+      case READY:
         if (hvacMode == OFF || failsafeActive) {
           // Handled in report
         } else if (hvacMode == COOL) {
@@ -260,11 +393,11 @@ void loop() {
           state = WAIT;
           gpioWrite(heat, HIGH);
         } else if (millis() - heatStartTime > MAX_HEAT_TIME) {
-          // Absolute safety timeout (2 hours)
-          stateDelay = millis() + 300000;
+          // Mandatory recovery period (15 mins)
+          stateDelay = millis() + 900000; 
           state = WAIT;
           gpioWrite(heat, HIGH);
-          mqtt.publish("hvac/error", "Safety Cutoff: Max runtime reached (2h)");
+          mqtt.publish("hvac/error", "Safety Cutoff: 2h run limit reached. 15m rest initiated.");
         }
         break;
       case FANWAIT:
