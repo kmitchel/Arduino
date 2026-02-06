@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="ThermoGuard Premium Thermostat - Smart HVAC Control for ESP32">
+    <title>ThermoGuard Premium</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body class="mode-0">
+    <div class="bg-mesh"></div>
+
+    <div class="app-container animate-fade">
+        <h1 style="display:none">ThermoGuard Thermostat Control</h1>
+        <header>
+            <div class="logo">ThermoGuard</div>
+            <div class="conn-indicator">
+                <div class="dot" id="connDot"></div>
+                <span id="connStatus">CONNECTING</span>
+            </div>
+        </header>
+
+        <main class="main-display">
+            <div class="temp-container">
+                <div class="state-label" id="sysState">--</div>
+                <div class="current-temp-wrapper">
+                    <span class="current-temp-value" id="currentTemp">--</span>
+                    <span class="degree-symbol">°</span>
+                </div>
+                <div class="target-label" id="indoorLabel">INDOOR</div>
+            </div>
+
+            <div class="target-dial">
+                <button class="btn-round" onclick="adjustTemp(-0.5)" aria-label="Decrease Target">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M5 12h14" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+                <div class="target-info">
+                    <div class="target-label">SET TO</div>
+                    <div class="target-value"><span id="targetTemp">--</span>°</div>
+                </div>
+                <button class="btn-round" onclick="adjustTemp(0.5)" aria-label="Increase Target">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 5v14M5 12h14" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </button>
+            </div>
+        </main>
+
+        <section class="mode-container">
+            <button class="mode-item" id="modeOff" onclick="setMode(0)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                OFF
+            </button>
+            <button class="mode-item" id="modeHeat" onclick="setMode(1)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                HEAT
+            </button>
+            <button class="mode-item" id="modeCool" onclick="setMode(2)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <circle cx="12" cy="10" r="3" />
+                </svg>
+                COOL
+            </button>
+            <button class="mode-item" id="modeFan" onclick="setMode(4)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M12 12L12 12" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <path d="M12 12L16 16M12 12L8 8M12 12L16 8M12 12L8 16" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+                FAN
+            </button>
+        </section>
+
+        <section class="info-grid">
+            <div class="info-card">
+                <span class="label">Sensor</span>
+                <span class="value" id="tempSource">Local</span>
+            </div>
+            <div class="info-card">
+                <span class="label">Uptime</span>
+                <span class="value" id="uptimeValue">0h 0m</span>
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

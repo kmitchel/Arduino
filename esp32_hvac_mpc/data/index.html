@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HVAC MPC Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #111827;
+            --card-bg: #1F2937;
+            --text: #F3F4F6;
+            --text-muted: #9CA3AF;
+            --accent: #3B82F6;
+            --accent-glow: rgba(59, 130, 246, 0.5);
+            --heat: #EF4444;
+            --cool: #3B82F6;
+            --fan: #10B981;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            display: grid;
+            gap: 20px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: -0.025em;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.2s;
+        }
+        .card:hover { /* transform: translateY(-2px); */ }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .value { font-size: 2rem; font-weight: 700; }
+        .label { font-size: 0.875rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .highlight { color: var(--accent); text-shadow: 0 0 20px var(--accent-glow); }
+        .mode-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .status-dot {
+            height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 8px;
+        }
+        .status-heat { background-color: var(--heat); box-shadow: 0 0 10px var(--heat); }
+        .status-cool { background-color: var(--cool); }
+        .status-off { background-color: #4B5563; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        th { color: var(--text-muted); font-size: 0.875rem; }
+        
+        .temp-dial {
+            position: relative;
+            width: 200px; height: 200px;
+            margin: 0 auto;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 180deg,
+                var(--card-bg) 0deg,
+                var(--accent) 180deg,
+                var(--card-bg) 360deg
+            );
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .temp-inner {
+            width: 180px; height: 180px;
+            border-radius: 50%;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>HVAC Control One</h1>
+        
+        <div class="card">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <span class="label">Current Status</span>
+                <div style="margin-top: 5px;">
+                    <span id="mode" class="mode-badge">LOADING...</span>
+                </div>
+            </div>
+            
+            <div class="grid-2" style="text-align: center;">
+                <div>
+                    <div class="value highlight" id="temp">--°</div>
+                    <div class="label">Inside</div>
+                </div>
+                <div>
+                    <div class="value" id="outside">--°</div>
+                    <div class="label">Outside</div>
+                </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <span id="heatStatus" class="status-dot status-off"></span>
+                <span id="target" style="font-size: 1.25rem; font-weight: 600;">Target: --°</span>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="label">Heat Rate</div>
+                <div class="value" style="font-size: 1.5rem;" id="heatRate">--</div>
+                <div class="label" style="font-size: 0.75rem;">deg/hr</div>
+            </div>
+            <div class="card">
+                <div class="label">Presence</div>
+                <div class="value" style="font-size: 1.5rem;" id="presence">--</div>
+                <div class="label" style="font-size: 0.75rem;" id="presenceDetail">Ken, Elisa</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label" style="margin-bottom: 10px;">Sun Schedule</div>
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    <span style="font-size: 1.25rem;">☀️</span> <span id="sunrise">--:--</span>
+                </div>
+                <div>
+                    <span style="font-size: 1.25rem;">🌙</span> <span id="sunset">--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label">Learning Brain</div>
+            <table id="brainTable">
+                <thead><tr><th>Condition</th><th>Rate</th><th>Samples</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function updateStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('mode').textContent = d.mode;
+                    document.getElementById('temp').textContent = d.temp.toFixed(1) + '°';
+                    document.getElementById('outside').textContent = d.outside.toFixed(1) + '°';
+                    document.getElementById('target').textContent = 'Target: ' + d.target.toFixed(1) + '°';
+                    document.getElementById('heatRate').textContent = d.heatRate;
+                    document.getElementById('presence').textContent = d.presence;
+                    document.getElementById('sunrise').textContent = d.sunrise;
+                    document.getElementById('sunset').textContent = d.sunset;
+                    
+                    const el = document.getElementById('heatStatus');
+                    if (d.heatOn) {
+                        el.className = 'status-dot status-heat';
+                    } else {
+                        el.className = 'status-dot status-off';
+                    }
+                });
+        }
+        
+        function updateBrain() {
+            fetch('/api/brain')
+                .then(r => r.json())
+                .then(d => {
+                    const tbody = document.querySelector('#brainTable tbody');
+                    tbody.innerHTML = '';
+                    for (const [key, val] of Object.entries(d)) {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${key}</td><td>${val.rate.toFixed(2)}</td><td>${val.samples}</td>`;
+                        tbody.appendChild(tr);
+                    }
+                });
+        }
+
+        setInterval(updateStatus, 2000);
+        updateStatus();
+        updateBrain();
+    </script>
+</body>
+</html>

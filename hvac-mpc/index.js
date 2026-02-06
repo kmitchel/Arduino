@@ -22,7 +22,7 @@ const CONFIG = {
     // Temperature Settings
     TEMP_FALLBACK: 62,   // Safety: If network fails
     TEMP_COAST: 62,      // Economy: Base coast temp (overridden by dynamic function)
-    TEMP_COMFORT: 68,    // Comfort: Target temp (reduced from 69 for energy savings)
+    TEMP_COMFORT: 63,    // Comfort: Target temp (reduced from 68 for energy savings)
 
     // Schedule - Fallback values (dynamic sunrise/sunset preferred)
     TARGET_HOUR: 8,      // Fallback: 8:00 AM if sunrise unavailable
@@ -150,9 +150,9 @@ const getTempBin = (outsideTemp) => {
 // Colder outside = higher coast temp to reduce recovery burn
 const getDynamicCoastTemp = (outsideTemp) => {
     if (outsideTemp === null) return CONFIG.TEMP_COAST;
-    if (outsideTemp < 10) return 65;      // Bitter: minimal setback (3°F delta)
-    if (outsideTemp < 25) return 64;      // Cold: moderate setback (4°F delta)
-    if (outsideTemp < 40) return 62;      // Cool: normal setback (6°F delta)
+    if (outsideTemp < 10) return 60;      // Bitter: emergency setback
+    if (outsideTemp < 25) return 60;      // Cold: emergency setback
+    if (outsideTemp < 40) return 60;      // Cool: normal setback (6°F delta)
     return 60;                            // Mild+: deeper setback (8°F delta)
 };
 
@@ -295,6 +295,8 @@ const publishState = () => {
         espControlMode: machine.espControlMode
     };
     client.publish("state", JSON.stringify(statePayload));
+    client.publish("hvac/presence", machine.isHome ? "HOME" : "AWAY", { retain: true });
+    client.publish("hvac/furnace", machine.heatCommand ? "ON" : "OFF", { retain: true });
     logVerbose("MQTT", "Published state", statePayload);
 };
 
@@ -562,23 +564,29 @@ const runLogic = async () => {
 
     // 3. Manual Override - let it complete before MPC resumes
     if (machine.state === "OVERRIDE") {
-        log("Override", `Manual override active at ${machine.overrideSetpoint}°F. HVAC state: ${machine.hvacState}. Waiting for heating to complete...`);
-        publishState();
-        log("Loop", `========== END TICK #${loopCount} ==========\n`);
-        return;
+        logVerbose("Override", `Manual override active at ${machine.overrideSetpoint}°F. HVAC state: ${machine.hvacState}.`);
+        // We do NOT return here effectively - we want to fall through to actuation
+        // But we want to skip MPC logic
     }
 
     // Get dynamic coast temperature based on current outside temp
     const dynamicCoast = getDynamicCoastTemp(machine.outsideTemp);
 
-    // 4. Presence Override - use dynamic coast temp
+    // 4. Presence Override - maintain coast temp when away
     if (!machine.isHome) {
         if (machine.state !== "AWAY") {
-            log("MPC", `User is AWAY -> Forcing Coast mode (${dynamicCoast}°F)`);
+            log("MPC", `User is AWAY -> Coast mode at ${dynamicCoast}°F`);
         }
         machine.state = "AWAY";
-        // Direct control: turn heat OFF when away
-        setHeatRelay(false);
+
+        // Maintain coast temperature with hysteresis (don't just turn off!)
+        if (machine.currentTemp < dynamicCoast - CONFIG.HEAT_ON_DELTA) {
+            setHeatRelay(true);
+        } else if (machine.currentTemp > dynamicCoast + CONFIG.HEAT_OFF_DELTA) {
+            setHeatRelay(false);
+        }
+        // Between thresholds: maintain current state
+
         setThermostat(dynamicCoast);  // Also update thermostat for ESP fallback
         publishState();
         return;
@@ -647,7 +655,12 @@ const runLogic = async () => {
 
     // 6. Decision Matrix
     let nextState = "COAST";
-    if (isComfortWindow) {
+
+    // Override takes precedence over everything
+    if (machine.state === "OVERRIDE") {
+        nextState = "OVERRIDE";
+        logVerbose("MPC", "In OVERRIDE mode - skipping decision matrix");
+    } else if (isComfortWindow) {
         nextState = "MAINTENANCE";
         logVerbose("MPC", `Decision: In comfort window (after sunrise, before coast, no rapid cooling) -> MAINTENANCE`);
     } else if (now >= triggerTime && now < targetTime) {
@@ -680,7 +693,9 @@ const runLogic = async () => {
 
     // 8. Direct Heat Control with Hysteresis
     let targetTemp;
-    if (machine.state === "MAINTENANCE" || machine.state === "RECOVERY") {
+    if (machine.state === "OVERRIDE") {
+        targetTemp = machine.overrideSetpoint;
+    } else if (machine.state === "MAINTENANCE" || machine.state === "RECOVERY") {
         targetTemp = CONFIG.TEMP_COMFORT;
     } else {
         targetTemp = dynamicCoast;

@@ -357,7 +357,7 @@ void loop() {
             state = COOLON;
           }
         } else if (hvacMode == HEAT) {
-          if (tempF < heatSet - 0.5) {
+          if (tempF < heatSet - 1.5) {
             state = HEATON;
             heatStartTime = millis(); // Start safety timer
           }

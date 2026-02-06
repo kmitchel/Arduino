@@ -1,0 +1,39 @@
+/home/kmitchel/thermoguard/hal.cpp: In static member function 'static void HAL::init()':
+/home/kmitchel/thermoguard/hal.cpp:24:21: error: invalid conversion from 'int' to 'const esp_task_wdt_config_t*' [-fpermissive]
+   24 | #define WDT_TIMEOUT 8
+      |                     ^
+      |                     |
+      |                     int
+/home/kmitchel/thermoguard/hal.cpp:59:23: note: in expansion of macro 'WDT_TIMEOUT'
+   59 |     esp_task_wdt_init(WDT_TIMEOUT, true);
+      |                       ^~~~~~~~~~~
+/home/kmitchel/thermoguard/hal.cpp:59:22: error: too many arguments to function 'esp_err_t esp_task_wdt_init(const esp_task_wdt_config_t*)'
+   59 |     esp_task_wdt_init(WDT_TIMEOUT, true);
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+In file included from /home/kmitchel/thermoguard/hal.cpp:6:
+/home/kmitchel/.arduino15/packages/esp32/tools/esp32-libs/3.3.6/include/esp_system/include/esp_task_wdt.h:47:11: note: declared here
+   47 | esp_err_t esp_task_wdt_init(const esp_task_wdt_config_t *config);
+      |           ^~~~~~~~~~~~~~~~~
+Multiple libraries were found for "Preferences.h"
+  Used: /home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/Preferences
+  Not used: /home/kmitchel/Arduino/libraries/Preferences
+
+[92mUsed library[0m        [92mVersion[0m [90mPath[0m
+[93mWiFi[0m                3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/WiFi[0m
+[93mNetworking[0m          3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/Network[0m
+[93mESPmDNS[0m             3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/ESPmDNS[0m
+[93mArduinoOTA[0m          3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/ArduinoOTA[0m
+[93mUpdate[0m              3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/Update[0m
+[93mArduinoJson[0m         7.4.2   [90m/home/kmitchel/Arduino/libraries/ArduinoJson[0m
+[93mPreferences[0m         3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/Preferences[0m
+[93mAsyncTCP[0m            1.1.4   [90m/home/kmitchel/Arduino/libraries/AsyncTCP[0m
+[93mESP Async WebServer[0m 3.6.0   [90m/home/kmitchel/Arduino/libraries/ESPAsyncWebServer[0m
+[93mFS[0m                  3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/FS[0m
+[93mOneWire[0m             2.3.8   [90m/home/kmitchel/Arduino/libraries/OneWire[0m
+[93mDallasTemperature[0m   4.0.5   [90m/home/kmitchel/Arduino/libraries/DallasTemperature[0m
+[93mSPIFFS[0m              3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/SPIFFS[0m
+[93mHash[0m                3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6/libraries/Hash[0m
+
+[92mUsed platform[0m [92mVersion[0m [90mPath[0m
+[93mesp32:esp32[0m   3.3.6   [90m/home/kmitchel/.arduino15/packages/esp32/hardware/esp32/3.3.6[0m
+Error during build: exit status 1
