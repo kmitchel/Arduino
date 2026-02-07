@@ -1,0 +1,6 @@
+tools/
+sketches/**/build/
+*.bin
+*.elf
+*.map
+.arduino15/
