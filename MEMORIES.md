@@ -33,3 +33,10 @@ python3 /home/agent/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/esp
 ## Maintenance Notes
 - **Do not shorten runtime below 5 minutes** to avoid heat exchanger corrosion.
 - **Do not tighten hysteresis further**; current performance is limited by the physical minimum runtime and thermal inertia of the gas furnace.
+
+## Infrastructure Risks & Non-HVAC Loads
+### 1. Laundry Room Pipe Protection
+- **Status**: Unconditioned zone, high freeze risk for water pipes.
+- **Mitigation**: Persistent space heater (identified as the ~1.2kW / 23% duty cycle signature).
+- **Optimization**: Potential for heat tape conversion to reduce load from 1.3kW down to <200W while maintaining safety.
+- **Watchdog**: Monitor for the absence of the 1.2kW signature during sub-freezing ambient temperatures to detect heater failure.
