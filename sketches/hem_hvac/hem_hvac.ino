@@ -374,7 +374,7 @@ void loop() {
         break;
       case HEATON:
         gpioWrite(heat, LOW);
-        stateDelay = millis() + 600000;
+        stateDelay = millis() + 300000;
         state = HEATING;
         gpioWrite(coolOver, LOW);
         gpioWrite(fanOver, LOW);
