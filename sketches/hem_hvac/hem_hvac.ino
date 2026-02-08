@@ -30,6 +30,7 @@ const uint8_t READY = 1, COOLON = 2, HEATON = 3, COOLING = 4, HEATING = 5, FANWA
 const uint8_t COOL = 1, HEAT = 2;
 uint8_t state = READY, hvacMode = 2;
 uint8_t heatSet = 68, coolSet = 70;
+float heatOnOffset = 0.25, heatOffOffset = 0.25;
 
 unsigned long stateDelay, machineDelay, heartbeatDelay;
 
@@ -100,6 +101,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
       saveConfig();
     }
   }
+  if (strcmp(topic, "hvac/heatOnOffset") == 0) {
+    heatOnOffset = payloads.toFloat();
+    saveConfig();
+  }
+  if (strcmp(topic, "hvac/heatOffOffset") == 0) {
+    heatOffOffset = payloads.toFloat();
+    saveConfig();
+  }
   if (strcmp(topic, "hvac/schedule") == 0) {
     StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, payloads);
@@ -151,6 +160,8 @@ void saveConfig() {
   StaticJsonDocument<512> doc;
   doc["heatSet"] = heatSet;
   doc["coolSet"] = coolSet;
+  doc["heatOnOffset"] = heatOnOffset;
+  doc["heatOffOffset"] = heatOffOffset;
   JsonArray sched = doc.createNestedArray("schedule");
   for (int i=0; i<3; i++) {
     JsonObject entry = sched.createNestedObject();
@@ -175,6 +186,8 @@ void loadConfig() {
   if (!error) {
     heatSet = doc["heatSet"] | heatSet;
     coolSet = doc["coolSet"] | coolSet;
+    heatOnOffset = doc["heatOnOffset"] | heatOnOffset;
+    heatOffOffset = doc["heatOffOffset"] | heatOffOffset;
     if (doc.containsKey("schedule")) {
       JsonArray sched = doc["schedule"];
       for (int i=0; i<sched.size() && i<3; i++) {
@@ -357,7 +370,7 @@ void loop() {
             state = COOLON;
           }
         } else if (hvacMode == HEAT) {
-          if (tempF < heatSet - 0.25) {
+          if (tempF < heatSet - heatOnOffset) {
             state = HEATON;
             heatStartTime = millis(); // Start safety timer
           }
@@ -388,7 +401,7 @@ void loop() {
         }
         break;
       case HEATING:
-        if ((tempF > heatSet + 0.25 && millis() > stateDelay) || hvacMode != HEAT || failsafeActive) {
+        if ((tempF > heatSet + heatOffOffset && millis() > stateDelay) || hvacMode != HEAT || failsafeActive) {
           stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
