@@ -357,7 +357,7 @@ void loop() {
             state = COOLON;
           }
         } else if (hvacMode == HEAT) {
-          if (tempF < heatSet - 0.5) {
+          if (tempF < heatSet - 1.0) {
             state = HEATON;
             heatStartTime = millis(); // Start safety timer
           }
@@ -388,7 +388,7 @@ void loop() {
         }
         break;
       case HEATING:
-        if ((tempF > heatSet + 0.0 && millis() > stateDelay) || hvacMode != HEAT || failsafeActive) {
+        if ((tempF > heatSet - 0.5 && millis() > stateDelay) || hvacMode != HEAT || failsafeActive) {
           stateDelay = millis() + 300000;
           state = WAIT;
           gpioWrite(heat, HIGH);
