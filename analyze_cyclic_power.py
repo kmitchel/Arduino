@@ -103,66 +103,57 @@ def run_fft_analysis(vals, interval_min):
 # --- Option 2: State Inference (Clustering/Duty Cycle) ---
 
 def run_state_inference(vals):
-    print("\n--- Option 2: State Inference (High Sensitivity) ---")
-    
-    # K-Means with K=6 to catch smaller cycles like fridge or water heater
-    v_min, v_max = min(vals), max(vals)
-    k = 6
-    c = [v_min + (v_max - v_min) * i / (k-1) for i in range(k)]
-    
-    for _ in range(30):
-        groups = [[] for _ in range(k)]
-        for v in vals:
-            diffs = [abs(v - ci) for ci in c]
-            idx = diffs.index(min(diffs))
-            groups[idx].append(v)
-        for i in range(k):
-            if groups[i]:
-                c[i] = sum(groups[i]) / len(groups[i])
-    
-    c.sort()
-    print(f"{'State':<15} | {'Mean Power (W)':<15} | {'Rel Change (W)':<15} | {'Share (%)':<10}")
-    print("-" * 65)
-    for i in range(k):
-        assigned_count = len([v for v in vals if abs(v - c[i]) == min(abs(v - cj) for cj in c)])
-        share = assigned_count / len(vals)
-        delta = c[i] - c[0] if i > 0 else 0
-        print(f"State {i:<8} | {c[i]:15.2f} | {delta:+15.2f} | {share:10.2%}")
-
-    # Step Change Analysis (identify hard jumps)
+    # Blind Discovery of Periodic Loads via Transition Clustering
     deltas = [vals[i] - vals[i-1] for i in range(1, len(vals))]
-    jumps = [d for d in deltas if abs(d) > 50] # Noise threshold
+    # Filter for significant 'On' transitions (positive jumps)
+    pos_jumps = [d for d in deltas if d > 50]
     
-    print("\nDetected Load Sigatures (Step Changes):")
-    # Identify common jump magnitudes (clustering deltas)
-    # Looking for ~100-200W (fridge) or ~3000-4500W (water heater)
-    potential_loads = {
-        "Refrigerator": (100, 250),
-        "Space Heater": (800, 1500),
-        "Water Heater": (3000, 5000)
-    }
+    if not pos_jumps:
+        print("No significant transitions detected.")
+        return
+
+    # Cluster the magnitudes of 'On' jumps to find distinct device types
+    # Simple 1D clustering on jump sizes
+    j_min, j_max = min(pos_jumps), max(pos_jumps)
+    k_discovery = 5
+    centroids = [j_min + (j_max - j_min) * i / (k_discovery - 1) for i in range(k_discovery)]
     
-    found_signatures = []
-    for name, (low, high) in potential_loads.items():
-        # Find indices of 'On' transitions (positive jumps)
-        on_indices = [i for i, d in enumerate(deltas) if low <= d <= high]
+    for _ in range(20):
+        groups = [[] for _ in range(k_discovery)]
+        for j in pos_jumps:
+            idx = min(range(k_discovery), key=lambda i: abs(j - centroids[i]))
+            groups[idx].append(j)
+        for i in range(k_discovery):
+            if groups[i]: centroids[i] = sum(groups[i]) / len(groups[i])
+    
+    centroids.sort()
+    
+    print("\n--- Blind Load Discovery (Periodic Transition Analysis) ---")
+    print(f"{'Appliance ID':<15} | {'Mean Jump (W)':<15} | {'Count':<8} | {'Median Period (min)':<20}")
+    print("-" * 65)
+    
+    for i, c_watt in enumerate(centroids):
+        # Identify indices where this specific 'type' of load turned on
+        indices = [idx for idx, d in enumerate(deltas) if abs(d - c_watt) < (c_watt * 0.15 + 25)]
         
-        if on_indices:
-            # Calculate intervals between successive 'On' events
-            intervals = [(on_indices[i] - on_indices[i-1]) for i in range(1, len(on_indices))]
-            median_interval = statistics.median(intervals) if intervals else 0
-            
-            # Catch wattage
-            matches = [abs(d) for d in jumps if low <= abs(d) <= high]
-            avg_w = sum(matches) / len(matches)
-            
-            sig = f"  - {name:15}: {len(on_indices):3} 'On' events | ~{avg_w:6.1f}W | Period: {median_interval:5.1f} min"
-            found_signatures.append(sig)
-    
-    if found_signatures:
-        for s in found_signatures: print(s)
-    else:
-        print("  No clear appliance signatures found in step changes.")
+        if len(indices) < 3: continue # Not enough data for period analysis
+        
+        # Calculate intervals between 'On' events
+        intervals = [indices[j] - indices[j-1] for j in range(1, len(indices))]
+        median_p = statistics.median(intervals)
+        
+        # Calculate consistency (Standard Deviation of intervals / Mean)
+        # Low coefficient of variation means high periodicity
+        if len(intervals) >= 2:
+            mean_p = sum(intervals) / len(intervals)
+            stdev_p = statistics.stdev(intervals)
+            cv = stdev_p / mean_p if mean_p > 0 else 1.0
+        else:
+            cv = 1.0
+
+        periodicity = "High" if cv < 0.2 else "Medium" if cv < 0.5 else "Low"
+        
+        print(f"Load Group {i:<4} | {c_watt:15.2f} | {len(indices):<8} | {median_p:5.1f} min ({periodicity} periodicity)")
 
 # --- Option 3: Autocorrelation (ACF) ---
 
