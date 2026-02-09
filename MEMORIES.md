@@ -34,6 +34,11 @@ python3 /home/agent/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/esp
 - **Do not shorten runtime below 5 minutes** to avoid heat exchanger corrosion.
 - **Do not tighten hysteresis further**; current performance is limited by the physical minimum runtime and thermal inertia of the gas furnace.
 
+### Appliance Cycling Signatures (Identified 2026-02-09)
+- **Refrigerator**: 167W, ~13 min period.
+- **Space Heater**: 1020W, ~62 min period.
+- **Water Heater**: 4220W, ~135 min period.
+
 ## Infrastructure Risks & Non-HVAC Loads
 ### 1. Laundry Room Pipe Protection
 - **Status**: Unconditioned zone, high freeze risk for water pipes.
