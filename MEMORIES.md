@@ -37,7 +37,8 @@ python3 /home/agent/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/esp
 ### Appliance Cycling Signatures (Identified 2026-02-09)
 - **Refrigerator**: 167W, ~13 min period.
 - **Space Heater**: 1020W, ~62 min period.
-- **Water Heater**: 4220W, ~135 min period.
+- **Water Heater (LOWER Element)**: ~3674W. Verified by sensor `2813513f03000072` (+2.7F rise).
+- **Water Heater (UPPER Element)**: ~4483W. Verified by sensor `2809853f030000a7` (+1.5F rise).
 
 ## Infrastructure Risks & Non-HVAC Loads
 ### 1. Laundry Room Pipe Protection
