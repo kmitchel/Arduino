@@ -103,61 +103,66 @@ def run_fft_analysis(vals, interval_min):
 # --- Option 2: State Inference (Clustering/Duty Cycle) ---
 
 def run_state_inference(vals):
-    print("\n--- Option 2: State Inference (Clustering) ---")
+    print("\n--- Option 2: State Inference (High Sensitivity) ---")
     
-    # Simple 3-means clustering: Idle, Space Heater, Major Load
-    # Initialize centroids across the range
+    # K-Means with K=6 to catch smaller cycles like fridge or water heater
     v_min, v_max = min(vals), max(vals)
-    c = [v_min, (v_min + v_max) / 2, v_max]
+    k = 6
+    c = [v_min + (v_max - v_min) * i / (k-1) for i in range(k)]
     
-    for _ in range(20):
-        groups = [[], [], []]
+    for _ in range(30):
+        groups = [[] for _ in range(k)]
         for v in vals:
             diffs = [abs(v - ci) for ci in c]
             idx = diffs.index(min(diffs))
             groups[idx].append(v)
-        
-        for i in range(3):
+        for i in range(k):
             if groups[i]:
                 c[i] = sum(groups[i]) / len(groups[i])
     
-    # Sort centroids
     c.sort()
-    labels = ["Baseload", "Medium Load", "Major Load"]
-    
-    print(f"{'State':<15} | {'Mean Power (W)':<15} | {'Time Share (%)':<15}")
-    print("-" * 49)
-    for i in range(3):
-        # Calculate share based on final assignments
+    print(f"{'State':<15} | {'Mean Power (W)':<15} | {'Rel Change (W)':<15} | {'Share (%)':<10}")
+    print("-" * 65)
+    for i in range(k):
         assigned_count = len([v for v in vals if abs(v - c[i]) == min(abs(v - cj) for cj in c)])
         share = assigned_count / len(vals)
-        print(f"{labels[i]:<15} | {c[i]:15.2f} | {share:15.2%}")
+        delta = c[i] - c[0] if i > 0 else 0
+        print(f"State {i:<8} | {c[i]:15.2f} | {delta:+15.2f} | {share:10.2%}")
 
-    # Duty Cycle for Medium Load (Space Heater)
-    # Threshold between state 0 and state 1
-    t1 = (c[0] + c[1]) / 2
-    t2 = (c[1] + c[2]) / 2
+    # Step Change Analysis (identify hard jumps)
+    deltas = [vals[i] - vals[i-1] for i in range(1, len(vals))]
+    jumps = [d for d in deltas if abs(d) > 50] # Noise threshold
     
-    # Cycles for State 1
-    in_state_1 = False
-    durations = []
-    start_idx = 0
-    for i, v in enumerate(vals):
-        if t1 < v < t2:
-            if not in_state_1:
-                in_state_1 = True
-                start_idx = i
-        else:
-            if in_state_1:
-                in_state_1 = False
-                durations.append(i - start_idx)
-                
-    if durations:
-        print(f"\nMedium Load Analysis (e.g. Space Heater):")
-        avg_on = statistics.mean(durations)
-        print(f"  Avg ON Duration: {avg_on:.2f} min")
-        # Derived from MEMORIES.md: 23% duty cycle
-        print(f"  Implicit Cycle:  {avg_on / 0.23:.2f} min (at 23% duty)")
+    print("\nDetected Load Sigatures (Step Changes):")
+    # Identify common jump magnitudes (clustering deltas)
+    # Looking for ~100-200W (fridge) or ~3000-4500W (water heater)
+    potential_loads = {
+        "Refrigerator": (100, 250),
+        "Space Heater": (800, 1500),
+        "Water Heater": (3000, 5000)
+    }
+    
+    found_signatures = []
+    for name, (low, high) in potential_loads.items():
+        # Find indices of 'On' transitions (positive jumps)
+        on_indices = [i for i, d in enumerate(deltas) if low <= d <= high]
+        
+        if on_indices:
+            # Calculate intervals between successive 'On' events
+            intervals = [(on_indices[i] - on_indices[i-1]) for i in range(1, len(on_indices))]
+            median_interval = statistics.median(intervals) if intervals else 0
+            
+            # Catch wattage
+            matches = [abs(d) for d in jumps if low <= abs(d) <= high]
+            avg_w = sum(matches) / len(matches)
+            
+            sig = f"  - {name:15}: {len(on_indices):3} 'On' events | ~{avg_w:6.1f}W | Period: {median_interval:5.1f} min"
+            found_signatures.append(sig)
+    
+    if found_signatures:
+        for s in found_signatures: print(s)
+    else:
+        print("  No clear appliance signatures found in step changes.")
 
 # --- Option 3: Autocorrelation (ACF) ---
 
