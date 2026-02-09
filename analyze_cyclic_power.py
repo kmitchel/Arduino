@@ -105,42 +105,59 @@ def run_fft_analysis(vals, interval_min):
 def run_state_inference(vals):
     print("\n--- Option 2: State Inference (Clustering) ---")
     
-    # Simple 2-means clustering to separate Baseload from Active Load
-    # Initialize
+    # Simple 3-means clustering: Idle, Space Heater, Major Load
+    # Initialize centroids across the range
     v_min, v_max = min(vals), max(vals)
-    c1, c2 = v_min, v_max
+    c = [v_min, (v_min + v_max) / 2, v_max]
     
-    for _ in range(10): # Iterations
-        g1 = [v for v in vals if abs(v - c1) < abs(v - c2)]
-        g2 = [v for v in vals if abs(v - c1) >= abs(v - c2)]
-        if g1: c1 = sum(g1) / len(g1)
-        if g2: c2 = sum(g2) / len(g2)
+    for _ in range(20):
+        groups = [[], [], []]
+        for v in vals:
+            diffs = [abs(v - ci) for ci in c]
+            idx = diffs.index(min(diffs))
+            groups[idx].append(v)
         
-    baseload = min(c1, c2)
-    active_load = max(c1, c2)
+        for i in range(3):
+            if groups[i]:
+                c[i] = sum(groups[i]) / len(groups[i])
     
-    # Calculate Duty Cycle
-    threshold = (baseload + active_load) / 2
-    active_points = [v for v in vals if v > threshold]
-    duty_cycle = len(active_points) / len(vals)
+    # Sort centroids
+    c.sort()
+    labels = ["Baseload", "Medium Load", "Major Load"]
     
-    # Find active durations
+    print(f"{'State':<15} | {'Mean Power (W)':<15} | {'Time Share (%)':<15}")
+    print("-" * 49)
+    for i in range(3):
+        # Calculate share based on final assignments
+        assigned_count = len([v for v in vals if abs(v - c[i]) == min(abs(v - cj) for cj in c)])
+        share = assigned_count / len(vals)
+        print(f"{labels[i]:<15} | {c[i]:15.2f} | {share:15.2%}")
+
+    # Duty Cycle for Medium Load (Space Heater)
+    # Threshold between state 0 and state 1
+    t1 = (c[0] + c[1]) / 2
+    t2 = (c[1] + c[2]) / 2
+    
+    # Cycles for State 1
+    in_state_1 = False
     durations = []
-    current_run = 0
-    for v in vals:
-        if v > threshold:
-            current_run += 1
+    start_idx = 0
+    for i, v in enumerate(vals):
+        if t1 < v < t2:
+            if not in_state_1:
+                in_state_1 = True
+                start_idx = i
         else:
-            if current_run > 0:
-                durations.append(current_run)
-            current_run = 0
-            
-    avg_on_time = statistics.mean(durations) if durations else 0
-    
-    print(f"Inferred Baseload:    {baseload:.2f} W")
-    print(f"Inferred Active Load:  {active_load:.2f} W")
-    print(f"Estimated Duty Cycle: {duty_cycle:.2%}")
-    print(f"Average ON duration:  {avg_on_time:.2f} samples")
+            if in_state_1:
+                in_state_1 = False
+                durations.append(i - start_idx)
+                
+    if durations:
+        print(f"\nMedium Load Analysis (e.g. Space Heater):")
+        avg_on = statistics.mean(durations)
+        print(f"  Avg ON Duration: {avg_on:.2f} min")
+        # Derived from MEMORIES.md: 23% duty cycle
+        print(f"  Implicit Cycle:  {avg_on / 0.23:.2f} min (at 23% duty)")
 
 # --- Option 3: Autocorrelation (ACF) ---
 
