@@ -45,7 +45,7 @@ unsigned long lastBattRead = 0;
 #define W_SENSOR 12
 
 ICACHE_RAM_ATTR void wPulsed() {
-  wNewTime = millis();
+  wNewTime = micros();
   wPulse = true;
 }
 
@@ -118,14 +118,14 @@ void loop() {
   }
 
   if (wPulse) {
-    // Pulse less than 300 ms is > 24kW. Probably noise, better to just drop the pulse.
-    if (wNewTime - wOldTime > 300) {
+    // Pulse less than 300,000 us (300 ms) is > 12kW. Probably noise.
+    if (wNewTime - wOldTime > 300000) {
       //Ignore the first pulse. Need 2 good pulses to calc.
       if (!firstRun) {
-        //Compute watts. No floating point necessary. 2Wh per pulse.
-//        unsigned int currentW = 7200000.0 / (wNewTime - wOldTime);
-        unsigned int currentW = 3600000.0 / (wNewTime - wOldTime);
-        mqtt.publish("power/W", String(currentW).c_str());
+        //Compute watts with microsecond precision. 1Wh per pulse.
+        // 3600s * 1,000,000us / dt
+        float currentW = 3600000000.0 / (float)(wNewTime - wOldTime);
+        mqtt.publish("power/W", String(currentW, 2).c_str());
       } else {
         firstRun = false;
       }
