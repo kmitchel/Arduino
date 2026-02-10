@@ -118,22 +118,32 @@ void loop() {
   }
 
   if (wPulse) {
-    // Pulse less than 300,000 us (300 ms) is > 12kW. Probably noise.
-    if (wNewTime - wOldTime > 300000) {
-      //Ignore the first pulse. Need 2 good pulses to calc.
-      if (!firstRun) {
-        //Compute watts with microsecond precision. 1Wh per pulse.
-        // 3600s * 1,000,000us / dt
-        float currentW = 3600000000.0 / (float)(wNewTime - wOldTime);
-        mqtt.publish("power/W", String(currentW, 2).c_str());
-      } else {
-        firstRun = false;
-      }
+    unsigned long dt = wNewTime - wOldTime;
+    
+    // Debounce: Reject pulses faster than 100ms (100,000 µs).
+    // 100A service @ 240V = 24kW max. 100ms = 36kW equivalent.
+    // Any pulse below this threshold is physically impossible and
+    // is an optical double-trigger from the IR test port.
+    if (!firstRun && dt < 100000) {
+      // Log rejected pulse for diagnostics, do NOT update wOldTime
+      mqtt.publish("power/rejected", String(3600000000.0 / (float)dt, 2).c_str());
+      wPulse = false;
+    } else if (!firstRun) {
+      // 1Wh per pulse. 3600s * 1,000,000us / dt
+      float currentW = 3600000000.0 / (float)dt;
+
+      mqtt.publish("power/W", String(currentW, 2).c_str());
+
       wOldTime = wNewTime;
-      //Toggle builtin LED for use as a heartbeat.
       digitalWrite(0, !digitalRead(0));
+      wPulse = false;
+    } else {
+      // First pulse after startup — establish baseline, no publish
+      firstRun = false;
+      wOldTime = wNewTime;
+      digitalWrite(0, !digitalRead(0));
+      wPulse = false;
     }
-    wPulse = false;
   }
 
   if (millis() - lastTemp > 15000) {
