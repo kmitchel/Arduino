@@ -102,25 +102,46 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
   if (strcmp(topic, "hvac/heatOnOffset") == 0) {
-    heatOnOffset = payloads.toFloat();
-    saveConfig();
+    if (payloads == "?") {
+      mqtt.publish("hvac/heatOnOffset", String(heatOnOffset, 2).c_str());
+    } else {
+      heatOnOffset = payloads.toFloat();
+      saveConfig();
+    }
   }
   if (strcmp(topic, "hvac/heatOffOffset") == 0) {
-    heatOffOffset = payloads.toFloat();
-    saveConfig();
+    if (payloads == "?") {
+      mqtt.publish("hvac/heatOffOffset", String(heatOffOffset, 2).c_str());
+    } else {
+      heatOffOffset = payloads.toFloat();
+      saveConfig();
+    }
   }
   if (strcmp(topic, "hvac/schedule") == 0) {
-    StaticJsonDocument<512> doc;
-    DeserializationError error = deserializeJson(doc, payloads);
-    if (!error && doc.is<JsonArray>()) {
-      JsonArray arr = doc.as<JsonArray>();
-      for (int i=0; i<arr.size() && i<3; i++) {
-        schedule[i].hour = arr[i]["h"];
-        schedule[i].temp = arr[i]["t"];
+    if (payloads == "?") {
+      StaticJsonDocument<512> respDoc;
+      JsonArray arr = respDoc.to<JsonArray>();
+      for (int i=0; i<3; i++) {
+        JsonObject entry = arr.createNestedObject();
+        entry["h"] = schedule[i].hour;
+        entry["t"] = schedule[i].temp;
       }
-      currentScheduledSetpoint = -1; // Force re-evaluation
-      saveConfig();
-      mqtt.publish("hvac/info", "Schedule updated via MQTT");
+      char buf[256];
+      serializeJson(respDoc, buf);
+      mqtt.publish("hvac/schedule", buf);
+    } else {
+      StaticJsonDocument<512> doc;
+      DeserializationError error = deserializeJson(doc, payloads);
+      if (!error && doc.is<JsonArray>()) {
+        JsonArray arr = doc.as<JsonArray>();
+        for (int i=0; i<arr.size() && i<3; i++) {
+          schedule[i].hour = arr[i]["h"];
+          schedule[i].temp = arr[i]["t"];
+        }
+        currentScheduledSetpoint = -1; // Force re-evaluation
+        saveConfig();
+        mqtt.publish("hvac/info", "Schedule updated via MQTT");
+      }
     }
   }
   if (strcmp(topic, "temp/tempF") == 0) {
